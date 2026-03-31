@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Upload, List, CheckCircle, Trash2, Download, FileText } from 'lucide-react';
+import { Plus, Upload, List, CheckCircle, Trash2, Download, FileText, Users } from 'lucide-react';
 import { format } from 'date-fns';
 
-type Tab = 'list' | 'submit' | 'status';
+type Tab = 'list' | 'submit' | 'status' | 'teachers';
+
+interface Teacher {
+  id: number;
+  name: string;
+}
 
 interface Training {
   id: number;
@@ -27,17 +32,29 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('list');
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   
   // Form states
   const [newTraining, setNewTraining] = useState({ title: '', requester: '', deadline: '', description: '' });
   const [submitForm, setSubmitForm] = useState({ training_id: '', teacher_name: '', password: '' });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [newTeacherName, setNewTeacherName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchTrainings();
     fetchSubmissions();
+    fetchTeachers();
   }, []);
+
+  const fetchTeachers = async () => {
+    try {
+      const res = await fetch('/api/teachers');
+      if (res.ok) setTeachers(await res.json());
+    } catch (err) {
+      console.error('Failed to fetch teachers', err);
+    }
+  };
 
   const fetchTrainings = async () => {
     try {
@@ -141,6 +158,36 @@ export default function App() {
     }
   };
 
+  const handleCreateTeacher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTeacherName.trim()) return;
+    try {
+      const res = await fetch('/api/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newTeacherName.trim() }),
+      });
+      if (res.ok) {
+        setNewTeacherName('');
+        fetchTeachers();
+      } else {
+        alert('등록 실패 (이미 등록된 이름일 수 있습니다)');
+      }
+    } catch (err) {
+      alert('등록 실패');
+    }
+  };
+
+  const handleDeleteTeacher = async (id: number) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    try {
+      const res = await fetch(`/api/teachers/${id}`, { method: 'DELETE' });
+      if (res.ok) fetchTeachers();
+    } catch (err) {
+      alert('삭제 실패');
+    }
+  };
+
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto">
       <header className="mb-12 text-center">
@@ -170,6 +217,12 @@ export default function App() {
           className={`brutal-btn brutal-shadow flex items-center gap-2 text-lg ${activeTab === 'status' ? 'bg-yellow-400 translate-x-[-2px] translate-y-[-2px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
         >
           <CheckCircle size={24} /> 제출 현황
+        </button>
+        <button 
+          onClick={() => setActiveTab('teachers')}
+          className={`brutal-btn brutal-shadow flex items-center gap-2 text-lg ${activeTab === 'teachers' ? 'bg-green-400 translate-x-[-2px] translate-y-[-2px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+        >
+          <Users size={24} /> 선생님 명단
         </button>
       </nav>
 
@@ -261,13 +314,18 @@ export default function App() {
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="font-bold text-xl">제출자 성명</label>
-                  <input 
+                  <select 
                     required 
                     value={submitForm.teacher_name} 
                     onChange={e => setSubmitForm({...submitForm, teacher_name: e.target.value})}
                     className="brutal-input bg-gray-50 text-lg" 
-                    placeholder="이름을 입력하세요 (예: 홍길동)" 
-                  />
+                  >
+                    <option value="">-- 제출자 선택 --</option>
+                    {teachers.map(t => (
+                      <option key={t.id} value={t.name}>{t.name}</option>
+                    ))}
+                  </select>
+                  {teachers.length === 0 && <p className="text-red-500 font-bold">선생님 명단을 먼저 등록해주세요.</p>}
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="font-bold text-xl">삭제 비밀번호</label>
@@ -325,39 +383,50 @@ export default function App() {
                           <table className="w-full text-left border-collapse">
                             <thead>
                               <tr className="bg-black text-white text-lg">
+                                <th className="p-3 border-b-3 border-black">선생님</th>
+                                <th className="p-3 border-b-3 border-black text-center">제출 여부</th>
                                 <th className="p-3 border-b-3 border-black">제출일시</th>
-                                <th className="p-3 border-b-3 border-black">제출자</th>
                                 <th className="p-3 border-b-3 border-black">첨부파일</th>
                                 <th className="p-3 border-b-3 border-black text-center">관리</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {trainingSubmissions.map((sub, idx) => (
-                                <tr key={sub.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-yellow-100 transition-colors`}>
-                                  <td className="p-3 border-b-3 border-black font-mono text-sm">
-                                    {format(new Date(sub.submitted_at), 'yyyy-MM-dd HH:mm')}
-                                  </td>
-                                  <td className="p-3 border-b-3 border-black font-bold text-lg">{sub.teacher_name}</td>
-                                  <td className="p-3 border-b-3 border-black">
-                                    <a 
-                                      href={`/api/download/${sub.file_name}`} 
-                                      className="inline-flex items-center gap-2 bg-cyan-200 px-3 py-1 brutal-border font-bold hover:bg-cyan-300 transition-colors"
-                                      download={sub.original_name}
-                                    >
-                                      <Download size={16} /> {sub.original_name}
-                                    </a>
-                                  </td>
-                                  <td className="p-3 border-b-3 border-black text-center">
-                                    <button 
-                                      onClick={() => handleDeleteSubmission(sub.id)}
-                                      className="bg-red-400 text-white p-2 brutal-border hover:bg-red-500 transition-colors"
-                                      title="삭제"
-                                    >
-                                      <Trash2 size={20} />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
+                              {Array.from(new Set([...teachers.map(t => t.name), ...trainingSubmissions.map(s => s.teacher_name)])).sort().map((teacherName, idx) => {
+                                const sub = trainingSubmissions.find(s => s.teacher_name === teacherName);
+                                return (
+                                  <tr key={teacherName} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-yellow-100 transition-colors`}>
+                                    <td className="p-3 border-b-3 border-black font-bold text-lg">{teacherName}</td>
+                                    <td className="p-3 border-b-3 border-black text-center">
+                                      {sub ? <span className="text-green-600 font-black text-2xl">O</span> : <span className="text-red-500 font-black text-2xl">X</span>}
+                                    </td>
+                                    <td className="p-3 border-b-3 border-black font-mono text-sm">
+                                      {sub ? format(new Date(sub.submitted_at), 'yyyy-MM-dd HH:mm') : '-'}
+                                    </td>
+                                    <td className="p-3 border-b-3 border-black">
+                                      {sub ? (
+                                        <a 
+                                          href={`/api/download/${sub.file_name}`} 
+                                          className="inline-flex items-center gap-2 bg-cyan-200 px-3 py-1 brutal-border font-bold hover:bg-cyan-300 transition-colors"
+                                          download={sub.original_name}
+                                        >
+                                          <Download size={16} /> {sub.original_name}
+                                        </a>
+                                      ) : '-'}
+                                    </td>
+                                    <td className="p-3 border-b-3 border-black text-center">
+                                      {sub && (
+                                        <button 
+                                          onClick={() => handleDeleteSubmission(sub.id)}
+                                          className="bg-red-400 text-white p-2 brutal-border hover:bg-red-500 transition-colors"
+                                          title="삭제"
+                                        >
+                                          <Trash2 size={20} />
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -367,6 +436,54 @@ export default function App() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'teachers' && (
+          <div className="max-w-4xl mx-auto space-y-8">
+            <section className="bg-green-400 p-6 md:p-8 brutal-border brutal-shadow">
+              <h2 className="text-3xl font-black mb-6 flex items-center gap-3 bg-white inline-flex px-4 py-2 brutal-border transform -rotate-1">
+                <Users size={32} />
+                선생님 명단 관리
+              </h2>
+              <form onSubmit={handleCreateTeacher} className="bg-white p-6 brutal-border flex flex-col md:flex-row gap-4 items-end">
+                <div className="flex flex-col gap-2 flex-grow">
+                  <label className="font-bold text-xl">새 선생님 이름</label>
+                  <input 
+                    required 
+                    value={newTeacherName} 
+                    onChange={e => setNewTeacherName(e.target.value)}
+                    className="brutal-input bg-gray-50 text-lg" 
+                    placeholder="예: 홍길동" 
+                  />
+                </div>
+                <button type="submit" className="brutal-btn brutal-shadow bg-black text-white text-xl py-3 px-6 hover:bg-gray-800 h-[58px]">
+                  추가하기
+                </button>
+              </form>
+            </section>
+
+            <section className="bg-white brutal-border brutal-shadow p-6">
+              <h3 className="text-2xl font-black mb-6">등록된 선생님 ({teachers.length}명)</h3>
+              {teachers.length === 0 ? (
+                <p className="text-gray-500 font-bold text-center py-8">등록된 선생님이 없습니다.</p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {teachers.map(teacher => (
+                    <div key={teacher.id} className="bg-gray-50 brutal-border p-3 flex justify-between items-center group hover:bg-yellow-100 transition-colors">
+                      <span className="font-bold text-lg">{teacher.name}</span>
+                      <button 
+                        onClick={() => handleDeleteTeacher(teacher.id)}
+                        className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="삭제"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         )}
       </main>

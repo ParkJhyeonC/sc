@@ -40,6 +40,11 @@ async function initDb() {
   });
 
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS teachers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE TABLE IF NOT EXISTS trainings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -162,6 +167,35 @@ app.delete('/api/submissions/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete submission' });
+  }
+});
+
+app.get('/api/teachers', async (req, res) => {
+  try {
+    const teachers = await db.all('SELECT * FROM teachers ORDER BY name ASC');
+    res.json(teachers);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch teachers' });
+  }
+});
+
+app.post('/api/teachers', async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+  try {
+    const result = await db.run('INSERT INTO teachers (name) VALUES (?)', [name]);
+    res.json({ id: result.lastID, name });
+  } catch (err) {
+    res.status(400).json({ error: 'Failed to add teacher (might be duplicate)' });
+  }
+});
+
+app.delete('/api/teachers/:id', async (req, res) => {
+  try {
+    await db.run('DELETE FROM teachers WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete teacher' });
   }
 });
 

@@ -36,11 +36,12 @@ body {
   padding: 0.75rem 1rem;
   font-weight: 600;
   outline: none;
-  transition: all 0.2s ease;
 }
 
 .brutal-input:focus {
-  box-shadow: 4px 4px 0px 0px rgba(0,0,0,1);
+  outline: 2px solid #000;
+  outline-offset: 2px;
+  background-color: #fff;
 }
 
 .brutal-btn {
