@@ -30,7 +30,7 @@ export default function App() {
   
   // Form states
   const [newTraining, setNewTraining] = useState({ title: '', requester: '', deadline: '', description: '' });
-  const [submitForm, setSubmitForm] = useState({ training_id: '', teacher_name: '' });
+  const [submitForm, setSubmitForm] = useState({ training_id: '', teacher_name: '', password: '' });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,7 +90,7 @@ export default function App() {
 
   const handleSubmitCertificate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile || !submitForm.training_id || !submitForm.teacher_name) {
+    if (!selectedFile || !submitForm.training_id || !submitForm.teacher_name || !submitForm.password) {
       alert('모든 항목을 입력하고 파일을 선택해주세요.');
       return;
     }
@@ -98,6 +98,7 @@ export default function App() {
     const formData = new FormData();
     formData.append('training_id', submitForm.training_id);
     formData.append('teacher_name', submitForm.teacher_name);
+    formData.append('password', submitForm.password);
     formData.append('certificate', selectedFile);
 
     try {
@@ -106,7 +107,7 @@ export default function App() {
         body: formData,
       });
       if (res.ok) {
-        setSubmitForm({ training_id: '', teacher_name: '' });
+        setSubmitForm({ training_id: '', teacher_name: '', password: '' });
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         fetchSubmissions();
@@ -119,10 +120,22 @@ export default function App() {
   };
 
   const handleDeleteSubmission = async (id: number) => {
-    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const password = prompt('삭제 비밀번호를 입력하세요:');
+    if (password === null) return;
+
     try {
-      const res = await fetch(`/api/submissions/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchSubmissions();
+      const res = await fetch(`/api/submissions/${id}`, { 
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      if (res.ok) {
+        fetchSubmissions();
+        alert('삭제되었습니다.');
+      } else {
+        const data = await res.json();
+        alert(data.error || '삭제 실패');
+      }
     } catch (err) {
       alert('삭제 실패');
     }
@@ -257,6 +270,17 @@ export default function App() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
+                  <label className="font-bold text-xl">삭제 비밀번호</label>
+                  <input 
+                    required 
+                    type="password"
+                    value={submitForm.password} 
+                    onChange={e => setSubmitForm({...submitForm, password: e.target.value})}
+                    className="brutal-input bg-gray-50 text-lg" 
+                    placeholder="삭제 시 사용할 비밀번호를 입력하세요" 
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
                   <label className="font-bold text-xl">이수증 파일 첨부 (PDF, 이미지 등)</label>
                   <input 
                     required 
@@ -278,52 +302,69 @@ export default function App() {
           <div className="space-y-8">
             <h2 className="text-3xl font-black mb-6 bg-pink-400 inline-block px-4 py-2 brutal-border transform rotate-1">제출 현황 목록</h2>
             
-            {submissions.length === 0 ? (
+            {trainings.length === 0 ? (
               <div className="bg-white p-8 brutal-border text-center font-bold text-xl text-gray-500">
-                아직 제출된 이수증이 없습니다.
+                등록된 연수가 없습니다.
               </div>
             ) : (
-              <div className="bg-white brutal-border brutal-shadow overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-black text-white text-lg">
-                      <th className="p-4 border-b-3 border-black">제출일시</th>
-                      <th className="p-4 border-b-3 border-black">연수명</th>
-                      <th className="p-4 border-b-3 border-black">제출자</th>
-                      <th className="p-4 border-b-3 border-black">첨부파일</th>
-                      <th className="p-4 border-b-3 border-black text-center">관리</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {submissions.map((sub, idx) => (
-                      <tr key={sub.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-yellow-100 transition-colors`}>
-                        <td className="p-4 border-b-3 border-black font-mono text-sm">
-                          {format(new Date(sub.submitted_at), 'yyyy-MM-dd HH:mm')}
-                        </td>
-                        <td className="p-4 border-b-3 border-black font-bold">{sub.training_title}</td>
-                        <td className="p-4 border-b-3 border-black font-bold text-lg">{sub.teacher_name}</td>
-                        <td className="p-4 border-b-3 border-black">
-                          <a 
-                            href={`/api/download/${sub.file_name}`} 
-                            className="inline-flex items-center gap-2 bg-cyan-200 px-3 py-1 brutal-border font-bold hover:bg-cyan-300 transition-colors"
-                            download={sub.original_name}
-                          >
-                            <Download size={16} /> {sub.original_name}
-                          </a>
-                        </td>
-                        <td className="p-4 border-b-3 border-black text-center">
-                          <button 
-                            onClick={() => handleDeleteSubmission(sub.id)}
-                            className="bg-red-400 text-white p-2 brutal-border hover:bg-red-500 transition-colors"
-                            title="삭제"
-                          >
-                            <Trash2 size={20} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-8">
+                {trainings.map(training => {
+                  const trainingSubmissions = submissions.filter(s => s.training_id === training.id);
+                  return (
+                    <div key={training.id} className="bg-white brutal-border brutal-shadow p-6">
+                      <h3 className="text-2xl font-black mb-4 flex items-center gap-2 flex-wrap">
+                        <span className="bg-yellow-400 px-2 py-1 brutal-border text-lg">{training.requester}</span>
+                        {training.title}
+                        <span className="text-sm font-normal text-gray-500 ml-auto bg-gray-100 px-2 py-1 brutal-border">제출 마감: {training.deadline}</span>
+                      </h3>
+                      
+                      {trainingSubmissions.length === 0 ? (
+                        <p className="text-gray-500 font-bold py-6 text-center bg-gray-50 brutal-border">아직 제출된 이수증이 없습니다.</p>
+                      ) : (
+                        <div className="overflow-x-auto brutal-border">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-black text-white text-lg">
+                                <th className="p-3 border-b-3 border-black">제출일시</th>
+                                <th className="p-3 border-b-3 border-black">제출자</th>
+                                <th className="p-3 border-b-3 border-black">첨부파일</th>
+                                <th className="p-3 border-b-3 border-black text-center">관리</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {trainingSubmissions.map((sub, idx) => (
+                                <tr key={sub.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-yellow-100 transition-colors`}>
+                                  <td className="p-3 border-b-3 border-black font-mono text-sm">
+                                    {format(new Date(sub.submitted_at), 'yyyy-MM-dd HH:mm')}
+                                  </td>
+                                  <td className="p-3 border-b-3 border-black font-bold text-lg">{sub.teacher_name}</td>
+                                  <td className="p-3 border-b-3 border-black">
+                                    <a 
+                                      href={`/api/download/${sub.file_name}`} 
+                                      className="inline-flex items-center gap-2 bg-cyan-200 px-3 py-1 brutal-border font-bold hover:bg-cyan-300 transition-colors"
+                                      download={sub.original_name}
+                                    >
+                                      <Download size={16} /> {sub.original_name}
+                                    </a>
+                                  </td>
+                                  <td className="p-3 border-b-3 border-black text-center">
+                                    <button 
+                                      onClick={() => handleDeleteSubmission(sub.id)}
+                                      className="bg-red-400 text-white p-2 brutal-border hover:bg-red-500 transition-colors"
+                                      title="삭제"
+                                    >
+                                      <Trash2 size={20} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

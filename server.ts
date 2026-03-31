@@ -54,10 +54,17 @@ async function initDb() {
       teacher_name TEXT NOT NULL,
       file_name TEXT NOT NULL,
       original_name TEXT NOT NULL,
+      password TEXT NOT NULL DEFAULT '',
       submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (training_id) REFERENCES trainings (id)
     );
   `);
+
+  try {
+    await db.exec(`ALTER TABLE submissions ADD COLUMN password TEXT NOT NULL DEFAULT ''`);
+  } catch (e) {
+    // Ignore if column already exists
+  }
 }
 
 // API Routes
@@ -108,7 +115,7 @@ app.get('/api/submissions', async (req, res) => {
 });
 
 app.post('/api/submissions', upload.single('certificate'), async (req, res) => {
-  const { training_id, teacher_name } = req.body;
+  const { training_id, teacher_name, password } = req.body;
   const file = req.file;
 
   if (!file) {
@@ -117,8 +124,8 @@ app.post('/api/submissions', upload.single('certificate'), async (req, res) => {
 
   try {
     const result = await db.run(
-      'INSERT INTO submissions (training_id, teacher_name, file_name, original_name) VALUES (?, ?, ?, ?)',
-      [training_id, teacher_name, file.filename, file.originalname]
+      'INSERT INTO submissions (training_id, teacher_name, file_name, original_name, password) VALUES (?, ?, ?, ?, ?)',
+      [training_id, teacher_name, file.filename, file.originalname, password || '']
     );
     res.json({ id: result.lastID, success: true });
   } catch (err) {
@@ -136,15 +143,22 @@ app.get('/api/download/:filename', (req, res) => {
 });
 
 app.delete('/api/submissions/:id', async (req, res) => {
+  const { password } = req.body;
   try {
-    const submission = await db.get('SELECT file_name FROM submissions WHERE id = ?', [req.params.id]);
-    if (submission) {
-      const filePath = path.join(uploadsDir, submission.file_name);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-      await db.run('DELETE FROM submissions WHERE id = ?', [req.params.id]);
+    const submission = await db.get('SELECT file_name, password FROM submissions WHERE id = ?', [req.params.id]);
+    if (!submission) {
+      return res.status(404).json({ error: 'Not found' });
     }
+    if (submission.password && submission.password !== password) {
+      return res.status(403).json({ error: '비밀번호가 일치하지 않습니다.' });
+    }
+
+    const filePath = path.join(uploadsDir, submission.file_name);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    await db.run('DELETE FROM submissions WHERE id = ?', [req.params.id]);
+    
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete submission' });
